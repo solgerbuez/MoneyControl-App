@@ -1,0 +1,153 @@
+@page "/"
+@inject AuthService Auth
+@inject DashboardService DashboardSvc
+@inject NavigationManager Nav
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (error is not null)
+{
+    <MudAlert Severity="Severity.Error">@error</MudAlert>
+}
+else if (datos is not null)
+{
+    <MudText Typo="Typo.h6" Class="mb-3">Hola, @datos.NombreUsuario</MudText>
+
+    @* Saldo total *@
+    <MudPaper Class="tarjeta-saldo pa-4 mb-3" Elevation="2">
+        <div class="etiqueta">Saldo total</div>
+        <div class="monto-grande">@Formato.Moneda(datos.BalanceTotal)</div>
+    </MudPaper>
+
+    @* Resumen del mes *@
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="6">
+            <MudPaper Class="pa-3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Ingresos del mes</MudText>
+                <div class="monto-ingreso">@Formato.Moneda(datos.IngresosMes)</div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6">
+            <MudPaper Class="pa-3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Gastos del mes</MudText>
+                <div class="monto-gasto">@Formato.Moneda(datos.GastosMes)</div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <div class="d-flex gap-2 mb-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="movimientos/nuevo-ingreso" FullWidth="true">+ Ingreso</MudButton>
+        <MudButton Variant="Variant.Filled" Class="btn-suave" Href="movimientos/nuevo-gasto" FullWidth="true">− Gasto</MudButton>
+    </div>
+
+    @* Cuentas *@
+    <MudPaper Class="pa-3 mb-3">
+        <div class="d-flex justify-space-between align-center mb-1">
+            <MudText Typo="Typo.subtitle1">Mis cuentas</MudText>
+            <MudButton Variant="Variant.Text" Size="Size.Small" Href="cuentas">Ver todas</MudButton>
+        </div>
+        @if (datos.Cuentas.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Todavía no tenés cuentas. Creá la primera para empezar a registrar movimientos.</MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="cuentas" Class="mt-2">Crear cuenta</MudButton>
+        }
+        else
+        {
+            foreach (var c in datos.Cuentas)
+            {
+                <div class="fila">
+                    <Circulo Texto="@Iconos.Iniciales(c.TipoCuenta)" Tono="@Iconos.TonoCuenta(c.TipoCuenta)" />
+                    <div class="centro">
+                        <div class="texto-cortado">@c.NombreCuenta</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@c.TipoCuenta</MudText>
+                    </div>
+                    <div class="derecha">@Formato.Moneda(c.Saldo)</div>
+                </div>
+            }
+        }
+    </MudPaper>
+
+    @* Gastos del mes por categoria *@
+    @if (datos.GastosPorCategoria.Count > 0)
+    {
+        <MudPaper Class="pa-3 mb-3">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Gastos del mes por categoría</MudText>
+            @foreach (var g in datos.GastosPorCategoria)
+            {
+                <div class="mb-3">
+                    <div class="d-flex justify-space-between">
+                        <span>@g.Categoria</span>
+                        <span>@Formato.Moneda(g.Total) · @g.Porcentaje%</span>
+                    </div>
+                    <Barra Porcentaje="g.Porcentaje" ColorHex="#3C8B68" />
+                </div>
+            }
+        </MudPaper>
+    }
+
+    @* Ultimos movimientos *@
+    <MudPaper Class="pa-3">
+        <div class="d-flex justify-space-between align-center mb-1">
+            <MudText Typo="Typo.subtitle1">Últimos movimientos</MudText>
+            <MudButton Variant="Variant.Text" Size="Size.Small" Href="movimientos">Ver todos</MudButton>
+        </div>
+        @if (datos.UltimosMovimientos.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Todavía no registraste movimientos.</MudText>
+        }
+        else
+        {
+            foreach (var m in datos.UltimosMovimientos)
+            {
+                var esIngreso = m.Tipo == "Ingreso";
+                <div class="fila">
+                    <Circulo Texto="@Iconos.Iniciales(m.Categoria)" Tono="@Iconos.TonoCategoria(m.Categoria, esIngreso)" />
+                    <div class="centro">
+                        <div class="texto-cortado">@(string.IsNullOrWhiteSpace(m.Descripcion) ? m.Categoria : m.Descripcion)</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@m.Categoria · @Formato.Fecha(m.Fecha)</MudText>
+                    </div>
+                    <div class="derecha @(esIngreso ? "monto-ingreso" : "monto-gasto")">
+                        @(esIngreso ? "+" : "-") @Formato.Moneda(m.Monto)
+                    </div>
+                </div>
+            }
+        }
+    </MudPaper>
+}
+
+@code {
+    private DashboardDto? datos;
+    private bool listo;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        if (Auth.EsAdmin)
+        {
+            Nav.NavigateTo("/usuarios");   // el administrador trabaja desde el panel de usuarios
+            return;
+        }
+
+        try
+        {
+            datos = await DashboardSvc.ObtenerAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception)
+        {
+            error = "No se pudo cargar el resumen.";
+        }
+        listo = true;
+    }
+}

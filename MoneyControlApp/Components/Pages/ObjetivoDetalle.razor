@@ -1,0 +1,177 @@
+@page "/objetivos/{Id:int}"
+@inject AuthService Auth
+@inject ObjetivoService ObjSvc
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="mb-3">
+    <MudButton Variant="Variant.Text" Href="objetivos">‹ Volver</MudButton>
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (objetivo is null)
+{
+    <MudAlert Severity="Severity.Error">@(error ?? "No se encontró el objetivo.")</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-3">
+        <MudText Typo="Typo.h5">@objetivo.Nombre</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            @(objetivo.FechaLimite.HasValue ? "Fecha límite: " + Formato.Fecha(objetivo.FechaLimite.Value) : "Sin fecha límite")
+        </MudText>
+
+        <div class="monto-grande mt-3">@Formato.Moneda(objetivo.MontoActual)</div>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">de @Formato.Moneda(objetivo.MontoObjetivo)</MudText>
+
+        <div class="mt-2 mb-1">
+            <Barra Porcentaje="objetivo.Porcentaje" ColorHex="#3C8B68" />
+        </div>
+        <div class="d-flex justify-space-between">
+            <span>@(objetivo.Porcentaje + " %")</span>
+            <span>@(objetivo.Faltante > 0 ? "Faltan " + Formato.Moneda(objetivo.Faltante) : "¡Objetivo cumplido!")</span>
+        </div>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-3">
+        <MudText Typo="Typo.h6" Class="mb-3">Agregar aporte</MudText>
+        <MudNumericField T="decimal" @bind-Value="montoAporte" Label="Monto del aporte" Variant="Variant.Outlined" Min="0" Class="mb-3" />
+        <MudDatePicker Label="Fecha (si no elegís, es hoy)" @bind-Date="fechaAporte" Variant="Variant.Outlined" Clearable="true" Class="mb-3" />
+
+        @if (errorAporte is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@errorAporte</MudAlert>
+        }
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AportarAsync" Disabled="ocupado">Aportar</MudButton>
+    </MudPaper>
+
+    <MudPaper Class="pa-3 mb-3">
+        <MudText Typo="Typo.subtitle1" Class="mb-1">Aportes realizados</MudText>
+        @if (objetivo.Aportes.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Todavía no hiciste aportes.</MudText>
+        }
+        else
+        {
+            foreach (var a in objetivo.Aportes.OrderByDescending(x => x.Fecha))
+            {
+                <div class="fila">
+                    <Circulo Texto="+" Tono="verde" />
+                    <div class="centro">@Formato.Fecha(a.Fecha)</div>
+                    <div class="derecha monto-ingreso">@("+ " + Formato.Moneda(a.Monto))</div>
+                </div>
+            }
+        }
+    </MudPaper>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    @if (!confirmarEliminar)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="() => confirmarEliminar = true">Eliminar objetivo</MudButton>
+    }
+    else
+    {
+        <div class="aviso">
+            ¿Eliminar el objetivo <strong>@objetivo.Nombre</strong> con todos sus aportes?
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="EliminarAsync" Disabled="ocupado">Sí, eliminar</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => confirmarEliminar = false">Cancelar</MudButton>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ObjetivoDetalleDto? objetivo;
+    private bool listo;
+    private bool ocupado;
+    private bool confirmarEliminar;
+    private string? error;
+    private string? errorAporte;
+
+    private decimal montoAporte;
+    private DateTime? fechaAporte;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        await CargarAsync();
+        listo = true;
+    }
+
+    private async Task CargarAsync()
+    {
+        try
+        {
+            objetivo = await ObjSvc.ObtenerAsync(Id);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task AportarAsync()
+    {
+        errorAporte = null;
+        if (montoAporte <= 0)
+        {
+            errorAporte = "El aporte tiene que ser mayor a cero.";
+            return;
+        }
+
+        ocupado = true;
+        try
+        {
+            await ObjSvc.AportarAsync(Id, new AporteCrearRequest { Monto = montoAporte, Fecha = fechaAporte });
+            Snackbar.Add("Aporte registrado.", Severity.Success);
+            montoAporte = 0;
+            fechaAporte = null;
+            await CargarAsync();    // vuelve a pedir el objetivo para ver el nuevo total y el aporte en la lista
+        }
+        catch (ApiException ex)
+        {
+            errorAporte = ex.Message;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private async Task EliminarAsync()
+    {
+        ocupado = true;
+        try
+        {
+            await ObjSvc.EliminarAsync(Id);
+            Snackbar.Add("Objetivo eliminado.", Severity.Success);
+            Nav.NavigateTo("/objetivos");
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            confirmarEliminar = false;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

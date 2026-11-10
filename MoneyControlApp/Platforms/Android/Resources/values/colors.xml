@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mismos colores que TemaApp: verde principal y barra de estado oscura (los iconos blancos se leen bien) -->
+    <color name="colorPrimary">#103B31</color>
+    <color name="colorPrimaryDark">#103B31</color>
+    <color name="colorAccent">#3C8B68</color>
+</resources>

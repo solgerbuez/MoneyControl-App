@@ -1,0 +1,167 @@
+@page "/objetivos"
+@inject AuthService Auth
+@inject ObjetivoService ObjSvc
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Objetivos de ahorro</MudText>
+    @if (listo && !formVisible)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Nuevo">+ Nuevo</MudButton>
+    }
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    @if (formVisible)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">Nuevo objetivo</MudText>
+
+            <MudTextField @bind-Value="nombre" Label="¿Para qué querés ahorrar?" Variant="Variant.Outlined" MaxLength="50" Class="mb-3" />
+            <MudNumericField T="decimal" @bind-Value="montoObjetivo" Label="Monto a juntar" Variant="Variant.Outlined" Min="0" Class="mb-3" />
+            <MudDatePicker Label="Fecha límite (opcional)" @bind-Date="fechaLimite" Variant="Variant.Outlined" Clearable="true" Class="mb-3" />
+
+            @if (errorForm is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">@errorForm</MudAlert>
+            }
+
+            <div class="d-flex gap-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">Crear objetivo</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="CerrarForm">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    @if (objetivos.Count == 0)
+    {
+        <MudPaper Class="pa-4">
+            <MudText>Todavía no tenés objetivos de ahorro. Creá uno (por ejemplo "Vacaciones") y andá sumando aportes.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        foreach (var o in objetivos)
+        {
+            <MudPaper Class="pa-3 mb-3">
+                <div class="d-flex justify-space-between align-center mb-2">
+                    <div class="d-flex align-center gap-3" style="min-width:0;">
+                    <Circulo Texto="@Iconos.Iniciales(o.Nombre)" Tono="verde" />
+                    <div style="min-width:0;">
+                        <div class="texto-cortado" style="font-weight:600;">@o.Nombre</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @(o.FechaLimite.HasValue ? "Hasta el " + Formato.Fecha(o.FechaLimite.Value) : "Sin fecha límite")
+                        </MudText>
+                    </div>
+                    </div>
+                    <div style="font-size:1.1rem;font-weight:700;">@(o.Porcentaje + " %")</div>
+                </div>
+
+                <Barra Porcentaje="o.Porcentaje" ColorHex="#3C8B68" />
+
+                <div class="d-flex justify-space-between mt-1">
+                    <span>@(Formato.Moneda(o.MontoActual) + " de " + Formato.Moneda(o.MontoObjetivo))</span>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @(o.Faltante > 0 ? "Faltan " + Formato.Moneda(o.Faltante) : "¡Objetivo cumplido!")
+                </MudText>
+
+                <div class="mt-2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" Href="@("objetivos/" + o.IdObjetivoAhorro)">Ver detalle y aportar</MudButton>
+                </div>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    private List<ObjetivoDto> objetivos = new();
+    private bool listo;
+    private bool ocupado;
+    private string? error;
+    private string? errorForm;
+
+    private bool formVisible;
+    private string nombre = "";
+    private decimal montoObjetivo;
+    private DateTime? fechaLimite;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            objetivos = await ObjSvc.ListarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        listo = true;
+    }
+
+    private void Nuevo()
+    {
+        nombre = "";
+        montoObjetivo = 0;
+        fechaLimite = null;
+        errorForm = null;
+        formVisible = true;
+    }
+
+    private void CerrarForm() => formVisible = false;
+
+    private async Task GuardarAsync()
+    {
+        errorForm = null;
+        if (string.IsNullOrWhiteSpace(nombre))
+        {
+            errorForm = "Poné un nombre para el objetivo.";
+            return;
+        }
+        if (montoObjetivo <= 0)
+        {
+            errorForm = "El monto a juntar tiene que ser mayor a cero.";
+            return;
+        }
+
+        ocupado = true;
+        try
+        {
+            await ObjSvc.CrearAsync(new ObjetivoGuardarRequest
+            {
+                Nombre = nombre.Trim(),
+                MontoObjetivo = montoObjetivo,
+                FechaLimite = fechaLimite
+            });
+            Snackbar.Add("Objetivo creado.", Severity.Success);
+            formVisible = false;
+            objetivos = await ObjSvc.ListarAsync();
+        }
+        catch (ApiException ex)
+        {
+            errorForm = ex.Message;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

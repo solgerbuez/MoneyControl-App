@@ -1,0 +1,22 @@
+<div class="barra">
+    <div class="barra-llena" style="width:@(Ancho)%;background:@Fondo"></div>
+</div>
+
+@code {
+    /// <summary>Porcentaje 0-100 (si pasa de 100 la barra queda llena).</summary>
+    [Parameter] public int Porcentaje { get; set; }
+
+    /// <summary>Color fijo en hexadecimal. Si viene vacio se elige solo: verde, ambar desde el 90 % o rojo al llegar al 100 %.</summary>
+    [Parameter] public string? ColorHex { get; set; }
+
+    /// <summary>Si es true (presupuesto cerca del limite) la barra se pinta de ambar.</summary>
+    [Parameter] public bool Alerta { get; set; }
+
+    private int Ancho => Math.Clamp(Porcentaje, 0, 100);
+
+    private string Fondo =>
+        !string.IsNullOrWhiteSpace(ColorHex) ? ColorHex
+        : Porcentaje >= 100 ? "#B5483D"
+        : (Alerta || Porcentaje >= 90) ? "#D98A22"
+        : "#3C8B68";
+}

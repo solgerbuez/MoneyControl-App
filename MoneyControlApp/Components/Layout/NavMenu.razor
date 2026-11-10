@@ -1,0 +1,39 @@
+@implements IDisposable
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+@*
+    
+*@
+<MudNavMenu Class="py-2">
+    @if (Auth.EsAdmin)
+    {
+        <MudNavLink Href="usuarios">Usuarios</MudNavLink>
+    }
+    else
+    {
+        <MudNavLink Href="" Match="NavLinkMatch.All">Inicio</MudNavLink>
+        <MudNavLink Href="cuentas">Cuentas</MudNavLink>
+        <MudNavLink Href="movimientos">Ingresos y gastos</MudNavLink>
+        <MudNavLink Href="presupuestos">Presupuestos</MudNavLink>
+        <MudNavLink Href="objetivos">Objetivos de ahorro</MudNavLink>
+        <MudNavLink Href="notificaciones">Notificaciones</MudNavLink>
+    }
+
+    <MudDivider Class="my-2" />
+    <MudNavLink OnClick="SalirAsync">Cerrar sesión</MudNavLink>
+</MudNavMenu>
+
+@code {
+    protected override void OnInitialized() => Auth.Cambio += OnCambio;  
+
+    private void OnCambio() => InvokeAsync(StateHasChanged);
+
+    private async Task SalirAsync()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/login");
+    }
+
+    public void Dispose() => Auth.Cambio -= OnCambio;
+}

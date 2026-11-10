@@ -1,0 +1,14 @@
+@* Logo de MoneyControl: un ojo que vigila (el control) con la M de Money como pupila *@
+<svg width="@Tamano" height="@Tamano" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;" aria-label="MoneyControl">
+    <rect width="200" height="200" rx="46" fill="@Fondo" />
+    <path d="M22 100Q100 30 178 100Q100 170 22 100Z" fill="none" stroke="#F5F7F1" stroke-width="9" stroke-linejoin="round" />
+    <circle cx="100" cy="100" r="36" fill="#3C8B68" />
+    <path d="M82 118V84l18 20 18-20v34" fill="none" stroke="#F5F7F1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
+
+@code {
+    [Parameter] public int Tamano { get; set; } = 34;
+
+    /// <summary>Color del cuadrado de fondo.</summary>
+    [Parameter] public string Fondo { get; set; } = "#174F3F";
+}

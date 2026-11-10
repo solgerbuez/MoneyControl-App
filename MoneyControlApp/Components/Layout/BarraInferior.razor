@@ -1,0 +1,39 @@
+@implements IDisposable
+@inject NavigationManager Nav
+
+@* Barra de navegacion inferior estilo app movil: los 5 modulos principales del usuario *@
+<nav class="barra-inferior">
+    @foreach (var b in Botones)
+    {
+        <a href="@b.Ruta" class="@(EstaActivo(b) ? "activo" : "")">
+            <span class="pastilla"><MudIcon Icon="@b.Icono" /></span>
+            <span>@b.Texto</span>
+        </a>
+    }
+</nav>
+
+@code {
+    private record Boton(string Texto, string Icono, string Ruta);
+
+    private static readonly Boton[] Botones =
+    {
+        new("Inicio", Icons.Material.Outlined.Home, ""),
+        new("Cuentas", Icons.Material.Outlined.AccountBalanceWallet, "cuentas"),
+        new("Movimientos", Icons.Material.Outlined.SwapVert, "movimientos"),
+        new("Presupuestos", Icons.Material.Outlined.PieChart, "presupuestos"),
+        new("Objetivos", Icons.Material.Outlined.Flag, "objetivos")
+    };
+
+   
+    private bool EstaActivo(Boton b)
+    {
+        var actual = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0];
+        return b.Ruta.Length == 0 ? actual.Length == 0 : actual.StartsWith(b.Ruta, StringComparison.OrdinalIgnoreCase);
+    }
+
+    protected override void OnInitialized() => Nav.LocationChanged += OnUbicacion;
+
+    private void OnUbicacion(object? sender, LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Nav.LocationChanged -= OnUbicacion;
+}

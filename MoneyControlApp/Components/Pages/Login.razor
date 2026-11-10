@@ -1,0 +1,78 @@
+@page "/login"
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<div class="marca-grande">
+    <Logo Tamano="64" />
+    <MudText Typo="Typo.h4" Class="mt-2">MoneyControl</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">Controlá tus finanzas personales</MudText>
+</div>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6" Class="mb-3">Iniciar sesión</MudText>
+
+    <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" InputType="InputType.Email"
+                  Immediate="true" Class="mb-3" />
+    <MudTextField @bind-Value="password" Label="Contraseña" Variant="Variant.Outlined" InputType="InputType.Password"
+                  Immediate="true" OnKeyDown="OnKeyDown" Class="mb-3" />
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="IniciarAsync" Disabled="cargando" FullWidth="true">
+        @(cargando ? "Ingresando..." : "Ingresar")
+    </MudButton>
+    <MudButton Variant="Variant.Text" Href="registro" FullWidth="true" Class="mt-2">Crear cuenta nueva</MudButton>
+</MudPaper>
+
+@code {
+    private string email = "";
+    private string password = "";
+    private string? error;
+    private bool cargando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (Auth.EstaLogueado) Nav.NavigateTo(Destino);
+    }
+
+    // El administrador entra directo al panel de usuarios; el usuario comun, a su inicio
+    private string Destino => Auth.EsAdmin ? "/usuarios" : "/";
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await IniciarAsync();
+    }
+
+    private async Task IniciarAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            error = "Completá el email y la contraseña.";
+            return;
+        }
+
+        cargando = true;
+        try
+        {
+            await Auth.LoginAsync(email.Trim(), password);
+            Nav.NavigateTo(Destino);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // credenciales incorrectas, cuenta desactivada, sin conexion...
+        }
+        catch (Exception)
+        {
+            error = "Ocurrió un error inesperado.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+}

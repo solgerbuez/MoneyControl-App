@@ -1,0 +1,190 @@
+@page "/usuarios"
+@inject AuthService Auth
+@inject UsuarioService UsuarioSvc
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-3">Usuarios</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsAdmin)
+{
+    <MudAlert Severity="Severity.Warning">Esta pantalla es solo para el administrador.</MudAlert>
+}
+else
+{
+    @* Resumen *@
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="4">
+            <MudPaper Class="pa-2 text-center">
+                <div style="font-size:1.4rem;font-weight:700;color:#103B31;">@datos.Total</div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4">
+            <MudPaper Class="pa-2 text-center">
+                <div class="monto-ingreso" style="font-size:1.4rem;">@datos.Activos</div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Activos</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4">
+            <MudPaper Class="pa-2 text-center">
+                <div class="monto-gasto" style="font-size:1.4rem;">@datos.Inactivos</div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Inactivos</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* Busqueda y filtro *@
+    <MudTextField @bind-Value="busqueda" Label="Buscar por nombre, apellido o email" Variant="Variant.Outlined" Immediate="true"
+                  OnKeyDown="OnKeyDown" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                  OnAdornmentClick="BuscarAsync" Class="mb-3" />
+
+    <MudSelect T="string" Value="filtroEstado" ValueChanged="CambiarFiltroAsync" Label="Estado" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3">
+        <MudSelectItem T="string" Value="@("")">Todos</MudSelectItem>
+        <MudSelectItem T="string" Value="@("activos")">Activos</MudSelectItem>
+        <MudSelectItem T="string" Value="@("inactivos")">Inactivos</MudSelectItem>
+    </MudSelect>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    @if (cargando)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (datos.Usuarios.Items.Count == 0)
+    {
+        <MudPaper Class="pa-4"><MudText>No se encontraron usuarios.</MudText></MudPaper>
+    }
+    else
+    {
+        foreach (var u in datos.Usuarios.Items)
+        {
+            <MudPaper Class="pa-3 mb-2">
+                <div class="d-flex align-center gap-3">
+                    <Circulo Texto="@Inicial(u)" Tono="@(u.Estado ? "verde" : "rojo")" />
+                    <div style="flex:1;min-width:0;">
+                        <div class="texto-cortado" style="font-weight:600;">@(u.Apellido + ", " + u.Nombre)</div>
+                        <div class="texto-cortado"><MudText Typo="Typo.caption" Color="Color.Secondary">@u.Email</MudText></div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @("Alta: " + Formato.Fecha(u.FechaRegistro) + " · Último acceso: " + (u.UltimoAcceso.HasValue ? Formato.FechaHora(u.UltimoAcceso.Value) : "nunca"))
+                        </MudText>
+                    </div>
+                </div>
+                <div class="d-flex justify-space-between align-center mt-2">
+                    <span class="@(u.Estado ? "monto-ingreso" : "monto-gasto")">@(u.Estado ? "Activo" : "Desactivado")</span>
+                    @if (u.Estado)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                   OnClick="() => CambiarEstadoAsync(u, false)" Disabled="ocupado">Desactivar</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Success" Size="Size.Small"
+                                   OnClick="() => CambiarEstadoAsync(u, true)" Disabled="ocupado">Activar</MudButton>
+                    }
+                </div>
+            </MudPaper>
+        }
+
+        <div class="d-flex justify-center mt-3">
+            <MudPagination Count="@Math.Max(datos.Usuarios.TotalPages, 1)" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" />
+        </div>
+    }
+}
+
+@code {
+    private const int TamanoPagina = 10;
+
+    private UsuariosRespuesta datos = new();
+    private int paginaActual = 1;
+    private string busqueda = "";
+    private string filtroEstado = "";
+    private bool listo;
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        if (Auth.EsAdmin) await CargarAsync();
+    }
+
+    private static string Inicial(UsuarioListaDto u)
+        => string.IsNullOrEmpty(u.Nombre) ? "?" : (u.Nombre[..1] + (string.IsNullOrEmpty(u.Apellido) ? "" : u.Apellido[..1])).ToUpperInvariant();
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        try
+        {
+            datos = await UsuarioSvc.ListarAsync(busqueda, filtroEstado, paginaActual, TamanoPagina);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    private async Task CambiarFiltroAsync(string valor)
+    {
+        filtroEstado = valor;
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+    private async Task CambiarEstadoAsync(UsuarioListaDto u, bool activo)
+    {
+        ocupado = true;
+        error = null;
+        try
+        {
+            await UsuarioSvc.CambiarEstadoAsync(u.IdUsuario, activo);
+            Snackbar.Add(activo ? "Usuario activado." : "Usuario desactivado: ya no puede iniciar sesión.", Severity.Success);
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

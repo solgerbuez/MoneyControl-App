@@ -1,0 +1,155 @@
+@page "/registro"
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<div class="marca-grande">
+    <Logo Tamano="56" />
+    <MudText Typo="Typo.h5" Class="mt-2">Crear cuenta</MudText>
+</div>
+
+<MudPaper Class="pa-4">
+    <MudTextField @bind-Value="nombre" Label="Nombre" Variant="Variant.Outlined" MaxLength="50" Class="mb-3" />
+    <MudTextField @bind-Value="apellido" Label="Apellido" Variant="Variant.Outlined" MaxLength="50" Class="mb-3" />
+    <MudTextField @bind-Value="email" Label="Email" Variant="Variant.Outlined" InputType="InputType.Email" MaxLength="100" Class="mb-3" />
+    <MudTextField @bind-Value="telefono" Label="Teléfono (opcional)" Variant="Variant.Outlined" MaxLength="20" Class="mb-3" />
+    <MudTextField @bind-Value="password" Label="Contraseña (mínimo 6 caracteres)" Variant="Variant.Outlined"
+                  InputType="InputType.Password" Class="mb-3" />
+    <MudTextField @bind-Value="repetir" Label="Repetir contraseña" Variant="Variant.Outlined"
+                  InputType="InputType.Password" Class="mb-3" />
+
+    @* Terminos y condiciones: hay que aceptarlos para poder crear la cuenta *@
+    <MudCheckBox T="bool" @bind-Value="acepto" Color="Color.Primary" Label="Leí y acepto los términos y condiciones" Class="mb-0" />
+    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="() => verTerminos = !verTerminos" Class="mb-2">
+        @(verTerminos ? "Ocultar términos y condiciones" : "Ver términos y condiciones")
+    </MudButton>
+    <MudCollapse Expanded="verTerminos">
+        <div class="terminos mb-3">
+            <MudText Typo="Typo.subtitle2">1. Qué es MoneyControl</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                MoneyControl es una aplicación para registrar y organizar tus finanzas personales: cuentas, ingresos, gastos,
+                presupuestos y objetivos de ahorro. No realiza pagos ni transferencias, ni se conecta con bancos u otras entidades financieras.
+            </MudText>
+
+            <MudText Typo="Typo.subtitle2">2. Tu cuenta</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Tenés que cargar datos verdaderos y mantener tu contraseña en reserva. Sos responsable de lo que se haga con tu sesión.
+                Cada persona puede tener una sola cuenta con su email.
+            </MudText>
+
+            <MudText Typo="Typo.subtitle2">3. Tus datos</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Guardamos tus datos personales y financieros únicamente para que la aplicación funcione. No los vendemos ni
+                los compartimos con terceros. Las contraseñas se guardan cifradas.
+            </MudText>
+
+            <MudText Typo="Typo.subtitle2">4. Uso correcto</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Te comprometés a usar la aplicación solo para administrar tus propias finanzas. Está prohibido intentar acceder a
+                cuentas de otras personas, alterar el funcionamiento del sistema o usarlo con fines ilegales.
+            </MudText>
+
+            <MudText Typo="Typo.subtitle2">5. Cuándo se puede desactivar una cuenta</MudText>
+            <MudText Typo="Typo.body2">El administrador puede desactivar tu cuenta si:</MudText>
+            <ul class="terminos-lista">
+                <li>pasa un tiempo prolongado sin que la uses;</li>
+                <li>se detecta un uso indebido o actividad sospechosa o fraudulenta;</li>
+                <li>incumplís estos términos;</li>
+                <li>la cuenta está duplicada o es de prueba;</li>
+                <li>lo pedís vos mismo.</li>
+            </ul>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Si tu cuenta se desactiva no podés iniciar sesión, pero tus datos se conservan. Podés pedirle al administrador que la reactive.
+            </MudText>
+
+            <MudText Typo="Typo.subtitle2">6. Cambios</MudText>
+            <MudText Typo="Typo.body2">
+                Estos términos pueden actualizarse. Si seguís usando la aplicación después de un cambio, se entiende que lo aceptás.
+            </MudText>
+        </div>
+    </MudCollapse>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RegistrarAsync" Disabled="@(cargando || !acepto)" FullWidth="true">
+        @(cargando ? "Creando cuenta..." : "Registrarme")
+    </MudButton>
+    <MudButton Variant="Variant.Text" Href="login" FullWidth="true" Class="mt-2">Ya tengo cuenta</MudButton>
+</MudPaper>
+
+@code {
+    private string nombre = "";
+    private string apellido = "";
+    private string email = "";
+    private string telefono = "";
+    private string password = "";
+    private string repetir = "";
+    private string? error;
+    private bool cargando;
+    private bool acepto;
+    private bool verTerminos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (Auth.EstaLogueado) Nav.NavigateTo(Auth.EsAdmin ? "/usuarios" : "/");
+    }
+
+    private async Task RegistrarAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(nombre) || string.IsNullOrWhiteSpace(apellido) || string.IsNullOrWhiteSpace(email))
+        {
+            error = "Completá nombre, apellido y email.";
+            return;
+        }
+        if (!email.Contains('@') || !email.Contains('.'))
+        {
+            error = "El email no es válido.";
+            return;
+        }
+        if (!acepto)
+        {
+            error = "Para crear la cuenta tenés que aceptar los términos y condiciones.";
+            return;
+        }
+        if (password.Length < 6)
+        {
+            error = "La contraseña debe tener al menos 6 caracteres.";
+            return;
+        }
+        if (password != repetir)
+        {
+            error = "Las contraseñas no coinciden.";
+            return;
+        }
+
+        cargando = true;
+        try
+        {
+            await Auth.RegistrarAsync(new RegistroRequest
+            {
+                Nombre = nombre.Trim(),
+                Apellido = apellido.Trim(),
+                Email = email.Trim(),
+                Password = password,
+                Telefono = string.IsNullOrWhiteSpace(telefono) ? null : telefono.Trim()
+            });
+            Nav.NavigateTo("/");     // el registro devuelve el token: ya quedo logueado
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // ej: "Ya existe una cuenta con ese email."
+        }
+        catch (Exception)
+        {
+            error = "Ocurrió un error inesperado.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+}

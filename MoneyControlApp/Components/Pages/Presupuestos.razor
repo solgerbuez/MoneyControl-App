@@ -1,0 +1,255 @@
+@page "/presupuestos"
+@inject AuthService Auth
+@inject PresupuestoService PresSvc
+@inject CatalogoService CatalogoSvc
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Presupuestos</MudText>
+    @if (listo && !formVisible)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Nuevo">+ Nuevo</MudButton>
+    }
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    @if (formVisible)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">@(editandoId is null ? "Nuevo presupuesto" : "Editar presupuesto")</MudText>
+
+            <MudSelect T="int" @bind-Value="idCategoria" Label="Categoría de gasto" Variant="Variant.Outlined" Class="mb-3">
+                <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                @foreach (var c in categorias)
+                {
+                    <MudSelectItem T="int" Value="@c.Id">@c.Nombre</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudNumericField T="decimal" @bind-Value="limite" Label="Monto límite" Variant="Variant.Outlined" Min="0" Class="mb-3" />
+
+            <MudDatePicker Label="Desde" @bind-Date="desde" Variant="Variant.Outlined" Class="mb-3" />
+            <MudDatePicker Label="Hasta" @bind-Date="hasta" Variant="Variant.Outlined" Class="mb-3" />
+
+            @if (errorForm is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">@errorForm</MudAlert>
+            }
+
+            <div class="d-flex gap-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">
+                    @(editandoId is null ? "Crear presupuesto" : "Guardar cambios")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="CerrarForm">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    @if (presupuestos.Count == 0)
+    {
+        <MudPaper Class="pa-4">
+            <MudText>No tenés presupuestos vigentes. Creá uno para controlar cuánto gastás por categoría; la app te avisa cuando llegás al 90 %.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        foreach (var p in presupuestos)
+        {
+            <MudPaper Class="pa-3 mb-3">
+                <div class="d-flex align-center gap-3 mb-2">
+                    <Circulo Texto="@Iconos.Iniciales(p.Categoria)" Tono="@Iconos.TonoCategoria(p.Categoria)" />
+                    <div class="centro" style="flex:1;min-width:0;">
+                        <div class="texto-cortado">@p.Categoria</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@(Formato.Fecha(p.FechaInicio) + " al " + Formato.Fecha(p.FechaFin))</MudText>
+                    </div>
+                    <div class="acciones">                        <button type="button" class="btn-lapiz" title="Editar" aria-label="Editar" @onclick="() => Editar(p)"><Lapiz /></button>
+                        <button type="button" class="btn-tacho" title="Eliminar" aria-label="Eliminar" @onclick="() => aEliminar = p"><Tacho /></button>
+                    </div>
+                </div>
+
+                <Barra Porcentaje="p.Porcentaje" Alerta="p.AlertaLimite" />
+
+                <div class="d-flex justify-space-between mt-1">
+                    <span>@(Formato.Moneda(p.Gastado) + " de " + Formato.Moneda(p.MontoLimite))</span>
+                    <span class="@(p.AlertaLimite ? "monto-gasto" : "")">@(p.Porcentaje + " %")</span>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @(p.Disponible >= 0 ? "Te quedan " + Formato.Moneda(p.Disponible) : "Te pasaste por " + Formato.Moneda(-p.Disponible))
+                </MudText>
+
+                @if (p.AlertaLimite)
+                {
+                    <div class="aviso mt-2">
+                        @(p.Porcentaje >= 100 ? "Superaste el límite de este presupuesto." : "Estás llegando al límite de este presupuesto.")
+                    </div>
+                }
+            </MudPaper>
+        }
+    }
+
+    @if (aEliminar is not null)
+    {
+        <div class="aviso mt-3">
+            ¿Eliminar el presupuesto de <strong>@aEliminar.Categoria</strong>?
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="EliminarAsync" Disabled="ocupado">Sí, eliminar</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => aEliminar = null">Cancelar</MudButton>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<PresupuestoDto> presupuestos = new();
+    private List<CatalogoDto> categorias = new();
+    private bool listo;
+    private bool ocupado;
+    private string? error;
+    private string? errorForm;
+
+    private bool formVisible;
+    private int? editandoId;
+    private int idCategoria;
+    private decimal limite;
+    private DateTime? desde;
+    private DateTime? hasta;
+    private PresupuestoDto? aEliminar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            categorias = await CatalogoSvc.CategoriasGastoAsync();
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        listo = true;
+    }
+
+    private async Task CargarAsync()
+    {
+        presupuestos = await PresSvc.ListarAsync(true);
+    }
+
+    // Por defecto el presupuesto abarca el mes actual
+    private void Nuevo()
+    {
+        var hoy = DateTime.Today;
+        editandoId = null;
+        idCategoria = 0;
+        limite = 0;
+        desde = new DateTime(hoy.Year, hoy.Month, 1);
+        hasta = desde.Value.AddMonths(1).AddDays(-1);
+        errorForm = null;
+        formVisible = true;
+    }
+
+    private void Editar(PresupuestoDto p)
+    {
+        editandoId = p.IdPresupuesto;
+        idCategoria = p.IdCategoriaGasto;
+        limite = p.MontoLimite;
+        desde = p.FechaInicio;
+        hasta = p.FechaFin;
+        errorForm = null;
+        formVisible = true;
+    }
+
+    private void CerrarForm() => formVisible = false;
+
+    private async Task GuardarAsync()
+    {
+        errorForm = null;
+        if (idCategoria == 0)
+        {
+            errorForm = "Elegí la categoría.";
+            return;
+        }
+        if (limite <= 0)
+        {
+            errorForm = "El monto límite tiene que ser mayor a cero.";
+            return;
+        }
+        if (desde is null || hasta is null)
+        {
+            errorForm = "Elegí las fechas de inicio y fin.";
+            return;
+        }
+        if (hasta.Value.Date < desde.Value.Date)
+        {
+            errorForm = "La fecha de fin no puede ser anterior a la de inicio.";
+            return;
+        }
+
+        var datos = new PresupuestoGuardarRequest
+        {
+            IdCategoriaGasto = idCategoria,
+            MontoLimite = limite,
+            FechaInicio = desde.Value.Date,
+            FechaFin = hasta.Value.Date
+        };
+
+        ocupado = true;
+        try
+        {
+            if (editandoId is null) await PresSvc.CrearAsync(datos);
+            else await PresSvc.EditarAsync(editandoId.Value, datos);
+
+            Snackbar.Add(editandoId is null ? "Presupuesto creado." : "Presupuesto actualizado.", Severity.Success);
+            formVisible = false;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            errorForm = ex.Message;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private async Task EliminarAsync()
+    {
+        if (aEliminar is null) return;
+        ocupado = true;
+        error = null;
+        try
+        {
+            await PresSvc.EliminarAsync(aEliminar.IdPresupuesto);
+            Snackbar.Add("Presupuesto eliminado.", Severity.Success);
+            aEliminar = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            aEliminar = null;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

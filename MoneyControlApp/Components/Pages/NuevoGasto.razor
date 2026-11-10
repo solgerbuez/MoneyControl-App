@@ -1,0 +1,149 @@
+@page "/movimientos/nuevo-gasto"
+@inject AuthService Auth
+@inject MovimientoService MovSvc
+@inject CuentaService CuentaSvc
+@inject CatalogoService CatalogoSvc
+@inject NotificacionService Notif
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-3">Nuevo gasto</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (cuentas.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        Primero necesitás una cuenta para registrar gastos.
+        <div class="mt-2"><MudButton Variant="Variant.Filled" Color="Color.Primary" Href="cuentas">Crear cuenta</MudButton></div>
+    </MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4">
+        <MudNumericField T="decimal" @bind-Value="monto" Label="Monto" Variant="Variant.Outlined" Min="0" Class="mb-3" />
+
+        <MudSelect T="int" @bind-Value="idCuenta" Label="Cuenta de donde sale el dinero" Variant="Variant.Outlined" Class="mb-3">
+            <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+            @foreach (var c in cuentas)
+            {
+                <MudSelectItem T="int" Value="@c.IdCuenta">@(c.NombreCuenta + " (" + Formato.Moneda(c.Saldo) + ")")</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="int" @bind-Value="idCategoria" Label="Categoría" Variant="Variant.Outlined" Class="mb-3">
+            <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+            @foreach (var c in categorias)
+            {
+                <MudSelectItem T="int" Value="@c.Id">@c.Nombre</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="int" @bind-Value="idMetodo" Label="Método de pago" Variant="Variant.Outlined" Class="mb-3">
+            <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+            @foreach (var m in metodos)
+            {
+                <MudSelectItem T="int" Value="@m.Id">@m.Nombre</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudTextField @bind-Value="descripcion" Label="Descripción (opcional)" Variant="Variant.Outlined" MaxLength="150" Class="mb-3" />
+
+        <MudDatePicker Label="Fecha (si no elegís, es hoy)" @bind-Date="fecha" Variant="Variant.Outlined" Clearable="true" Class="mb-3" />
+
+        @if (error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+        }
+
+        <div class="d-flex gap-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="GuardarAsync" Disabled="ocupado">Registrar gasto</MudButton>
+            <MudButton Variant="Variant.Outlined" Href="movimientos">Cancelar</MudButton>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private List<CuentaDto> cuentas = new();
+    private List<CatalogoDto> categorias = new();
+    private List<CatalogoDto> metodos = new();
+    private bool listo;
+    private bool ocupado;
+    private string? error;
+
+    private decimal monto;
+    private int idCuenta;
+    private int idCategoria;
+    private int idMetodo;
+    private string descripcion = "";
+    private DateTime? fecha;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            cuentas = await CuentaSvc.ListarAsync();
+            categorias = await CatalogoSvc.CategoriasGastoAsync();
+            metodos = await CatalogoSvc.MetodosPagoAsync();
+            if (cuentas.Count == 1) idCuenta = cuentas[0].IdCuenta;
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        listo = true;
+    }
+
+    private async Task GuardarAsync()
+    {
+        error = null;
+        if (monto <= 0)
+        {
+            error = "El monto tiene que ser mayor a cero.";
+            return;
+        }
+        if (idCuenta == 0 || idCategoria == 0 || idMetodo == 0)
+        {
+            error = "Elegí la cuenta, la categoría y el método de pago.";
+            return;
+        }
+
+        ocupado = true;
+        var noLeidasAntes = Notif.NoLeidas;
+        try
+        {
+            await MovSvc.CrearGastoAsync(new GastoCrearRequest
+            {
+                Monto = monto,
+                IdCuenta = idCuenta,
+                IdCategoriaGasto = idCategoria,
+                IdMetodoPago = idMetodo,
+                Descripcion = string.IsNullOrWhiteSpace(descripcion) ? null : descripcion.Trim(),
+                Fecha = fecha
+            });
+
+            await Notif.RefrescarAsync();    // si el gasto llega al 90 % de un presupuesto, la API crea una alerta
+            Snackbar.Add("Gasto registrado. El saldo de la cuenta se actualizó.", Severity.Success);
+            if (Notif.NoLeidas > noLeidasAntes)
+                Snackbar.Add("⚠ Alerta: un presupuesto llegó al 90 % o más. Mirá tus notificaciones.", Severity.Warning);
+            Nav.NavigateTo("/movimientos");
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

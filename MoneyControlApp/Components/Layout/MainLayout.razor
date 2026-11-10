@@ -1,0 +1,121 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthService Auth
+@inject NotificacionService Notif
+@inject NavigationManager Nav
+
+@* Proveedores de MudBlazor: tienen que estar una sola vez en el layout principal *@
+<MudThemeProvider Theme="TemaApp.Principal" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        @if (Auth.EstaLogueado)
+        {
+            <MudIconButton Icon="@Icons.Material.Outlined.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="AlternarMenu" />
+        }
+
+        @* La marca va centrada en la barra; en el login no se muestra porque ahi ya esta el logo grande *@
+        @if (!EnLogin)
+        {
+            <div class="marca-barra">
+                <Logo Tamano="30" />
+                <MudText Typo="Typo.h6" Class="titulo-app">MoneyControl</MudText>
+            </div>
+        }
+        <MudSpacer />
+
+        @* La campanita es solo para el usuario comun: el administrador no tiene notificaciones propias *@
+        @if (Auth.EstaLogueado && !Auth.EsAdmin)
+        {
+            <MudBadge Content="@Notif.NoLeidas" Visible="@(Notif.NoLeidas > 0)" Color="Color.Error" Overlap="true" Bordered="true">
+                <MudIconButton Icon="@Icons.Material.Outlined.Notifications" Color="Color.Inherit" Href="notificaciones" aria-label="Notificaciones" />
+            </MudBadge>
+        }
+    </MudAppBar>
+
+    @* Menu lateral: en el celular se superpone y se cierra al navegar *@
+    <MudDrawer @bind-Open="menuAbierto" Variant="DrawerVariant.Temporary" Elevation="2">
+        @if (Auth.EstaLogueado)
+        {
+            <div class="pa-4 d-flex align-center gap-3">
+                <MudAvatar Color="Color.Primary" Size="Size.Medium">@Inicial</MudAvatar>
+                <div style="min-width:0;">
+                    <MudText Typo="Typo.subtitle1" Class="texto-cortado">@Auth.NombreCompleto</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@Auth.Rol</MudText>
+                </div>
+            </div>
+            <MudDivider />
+        }
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Medium" Class="@(ConBarraInferior ? "py-4 px-3 contenido con-barra-inferior" : "py-4 px-3 contenido")">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@if (ConBarraInferior)
+{
+    <BarraInferior />
+}
+
+@code {
+    private bool menuAbierto;
+
+    // En el login no se muestra la marca de la barra (ahi esta el logo grande)
+    private bool EnLogin => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase);
+
+    // La barra de abajo es para el usuario comun logueado (el administrador usa solo el menu lateral)
+    private bool ConBarraInferior => Auth.EstaLogueado && !Auth.EsAdmin;
+
+    private string Inicial => string.IsNullOrEmpty(Auth.Nombre) ? "?" : Auth.Nombre[..1].ToUpperInvariant();
+
+    protected override void OnInitialized()
+    {
+        Auth.Cambio += OnSesionCambio;
+        Notif.Cambio += Redibujar;
+        Nav.LocationChanged += OnUbicacion;
+    }
+
+    private void AlternarMenu() => menuAbierto = !menuAbierto;
+
+    private void Redibujar() => InvokeAsync(StateHasChanged);
+
+    // Al cambiar de pantalla se cierra el menu
+    private void OnUbicacion(object? sender, LocationChangedEventArgs e)
+    {
+        menuAbierto = false;
+        Redibujar();
+    }
+
+    // Login / logout / sesion vencida (la API respondio 401)
+    private void OnSesionCambio()
+    {
+        InvokeAsync(async () =>
+        {
+            if (!Auth.EstaLogueado)
+            {
+                var ruta = Nav.ToBaseRelativePath(Nav.Uri);
+                if (!ruta.StartsWith("login") && !ruta.StartsWith("registro"))
+                    Nav.NavigateTo("/login");
+            }
+            else if (!Auth.EsAdmin)
+            {
+                await Notif.RefrescarAsync();   // actualiza el globito de la campanita
+            }
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        Auth.Cambio -= OnSesionCambio;
+        Notif.Cambio -= Redibujar;
+        Nav.LocationChanged -= OnUbicacion;
+    }
+}

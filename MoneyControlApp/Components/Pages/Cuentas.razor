@@ -1,0 +1,241 @@
+@page "/cuentas"
+@inject AuthService Auth
+@inject CuentaService CuentaSvc
+@inject CatalogoService CatalogoSvc
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Mis cuentas</MudText>
+    @if (listo && !formVisible)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Nueva">+ Nueva</MudButton>
+    }
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    @if (formVisible)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">@(editandoId is null ? "Nueva cuenta" : "Editar cuenta")</MudText>
+
+            <MudTextField @bind-Value="nombre" Label="Nombre de la cuenta" Variant="Variant.Outlined" MaxLength="50" Class="mb-3" />
+
+            <MudSelect T="int" @bind-Value="idTipo" Label="Tipo de cuenta" Variant="Variant.Outlined" Class="mb-3">
+                <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                @foreach (var t in tipos)
+                {
+                    <MudSelectItem T="int" Value="@t.Id">@t.Nombre</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudTextField @bind-Value="digitos" Label="Últimos 4 dígitos (opcional)" Variant="Variant.Outlined" MaxLength="4" Class="mb-3" />
+
+            @if (editandoId is null)
+            {
+                <MudNumericField T="decimal" @bind-Value="saldoInicial" Label="Saldo inicial" Variant="Variant.Outlined" Min="0" Class="mb-3" />
+            }
+
+            @if (errorForm is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">@errorForm</MudAlert>
+            }
+
+            <div class="d-flex gap-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">
+                    @(editandoId is null ? "Crear cuenta" : "Guardar cambios")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="CerrarForm">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    @if (cuentas.Count == 0)
+    {
+        <MudPaper Class="pa-4">
+            <MudText>Todavía no tenés cuentas. Creá una para poder registrar ingresos y gastos.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="pa-3 mb-3">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Total en cuentas</MudText>
+            <div class="monto-grande">@Formato.Moneda(cuentas.Sum(c => c.Saldo))</div>
+        </MudPaper>
+
+        <MudPaper Class="pa-3">
+            @foreach (var c in cuentas)
+            {
+                <div class="fila">
+                    <Circulo Texto="@Iconos.Iniciales(c.TipoCuenta)" Tono="@Iconos.TonoCuenta(c.TipoCuenta)" />
+                    <div class="centro">
+                        <div class="texto-cortado">@c.NombreCuenta</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @(c.TipoCuenta + (string.IsNullOrWhiteSpace(c.UltimosDigitos) ? "" : " · ····" + c.UltimosDigitos))
+                        </MudText>
+                    </div>
+                    <div class="derecha">
+                        <div>@Formato.Moneda(c.Saldo)</div>
+                        <div class="acciones">
+                            <button type="button" class="btn-lapiz" title="Editar" aria-label="Editar" @onclick="() => Editar(c)"><Lapiz /></button>
+                            <button type="button" class="btn-tacho" title="Eliminar" aria-label="Eliminar" @onclick="() => aEliminar = c"><Tacho /></button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </MudPaper>
+    }
+
+    @if (aEliminar is not null)
+    {
+        <div class="aviso mt-3">
+            ¿Eliminar la cuenta <strong>@aEliminar.NombreCuenta</strong>? Si tiene ingresos o gastos registrados, no se puede eliminar.
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="EliminarAsync" Disabled="ocupado">Sí, eliminar</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => aEliminar = null">Cancelar</MudButton>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<CuentaDto> cuentas = new();
+    private List<CatalogoDto> tipos = new();
+    private bool listo;
+    private bool ocupado;
+    private string? error;
+    private string? errorForm;
+
+    private bool formVisible;
+    private int? editandoId;
+    private string nombre = "";
+    private string digitos = "";
+    private int idTipo;
+    private decimal saldoInicial;
+    private CuentaDto? aEliminar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            tipos = await CatalogoSvc.TiposCuentaAsync();
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        listo = true;
+    }
+
+    private async Task CargarAsync()
+    {
+        cuentas = await CuentaSvc.ListarAsync();
+    }
+
+    private void Nueva()
+    {
+        editandoId = null;
+        nombre = "";
+        digitos = "";
+        idTipo = 0;
+        saldoInicial = 0;
+        errorForm = null;
+        formVisible = true;
+    }
+
+    private void Editar(CuentaDto c)
+    {
+        editandoId = c.IdCuenta;
+        nombre = c.NombreCuenta;
+        digitos = c.UltimosDigitos ?? "";
+        idTipo = c.IdTipoCuenta;
+        saldoInicial = 0;
+        errorForm = null;
+        formVisible = true;
+    }
+
+    private void CerrarForm() => formVisible = false;
+
+    private async Task GuardarAsync()
+    {
+        errorForm = null;
+        if (string.IsNullOrWhiteSpace(nombre))
+        {
+            errorForm = "Poné un nombre para la cuenta.";
+            return;
+        }
+        if (idTipo == 0)
+        {
+            errorForm = "Elegí el tipo de cuenta.";
+            return;
+        }
+
+        var datos = new CuentaGuardarRequest
+        {
+            NombreCuenta = nombre.Trim(),
+            UltimosDigitos = string.IsNullOrWhiteSpace(digitos) ? null : digitos.Trim(),
+            SaldoInicial = saldoInicial,
+            IdTipoCuenta = idTipo
+        };
+
+        ocupado = true;
+        try
+        {
+            if (editandoId is null) await CuentaSvc.CrearAsync(datos);
+            else await CuentaSvc.EditarAsync(editandoId.Value, datos);
+
+            Snackbar.Add(editandoId is null ? "Cuenta creada." : "Cuenta actualizada.", Severity.Success);
+            formVisible = false;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            errorForm = ex.Message;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private async Task EliminarAsync()
+    {
+        if (aEliminar is null) return;
+        ocupado = true;
+        error = null;
+        try
+        {
+            await CuentaSvc.EliminarAsync(aEliminar.IdCuenta);
+            Snackbar.Add("Cuenta eliminada.", Severity.Success);
+            aEliminar = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // ej: "No se puede eliminar una cuenta con movimientos."
+            aEliminar = null;
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

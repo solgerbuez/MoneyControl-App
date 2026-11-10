@@ -1,0 +1,9 @@
+<div class="circulo tono-@Tono">@Texto</div>
+
+@code {
+    /// <summary>Texto corto (iniciales) que se muestra dentro del circulo.</summary>
+    [Parameter] public string Texto { get; set; } = "";
+
+    /// <summary>"verde", "ambar" o "rojo": define el color de fondo y de la letra.</summary>
+    [Parameter] public string Tono { get; set; } = "verde";
+}
